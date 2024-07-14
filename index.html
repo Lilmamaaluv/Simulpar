@@ -16,10 +16,42 @@
         canvas {
             border: 1px solid #fff;
         }
+        #settingsMenu {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #fff;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #particleInfo {
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
     <canvas id="simulationCanvas"></canvas>
+    <div id="settingsMenu">
+        <h3>Particle Info</h3>
+        <p id="particleInfo">Click on a particle to see details</p>
+        <h3>Spawn Particles</h3>
+        <div>
+            <label for="numProtons">Protons:</label>
+            <input type="number" id="numProtons" min="1" max="100" value="1">
+            <button onclick="spawnProtons()">Spawn</button>
+        </div>
+        <div>
+            <label for="numNeutrons">Neutrons:</label>
+            <input type="number" id="numNeutrons" min="1" max="100" value="1">
+            <button onclick="spawnNeutrons()">Spawn</button>
+        </div>
+        <h3>Spawn Elements</h3>
+        <div>
+            <label for="elementName">Element:</label>
+            <input type="text" id="elementName" placeholder="e.g., Helium">
+            <button onclick="spawnElement()">Spawn</button>
+        </div>
+    </div>
     <script>
         const ELEMENTS = {
             "Hydrogen": { protons: 1, neutrons: 0 },
@@ -52,7 +84,6 @@
                 this.x += this.vx;
                 this.y += this.vy;
 
-                // Bounce off walls
                 if (this.x < this.radius || this.x > canvas.width - this.radius) {
                     this.vx *= -1;
                 }
@@ -91,25 +122,23 @@
             }
 
             break() {
-                // Logic for matrix breaking
                 this.charge = 0;
                 this.configuration = null;
                 this.element = null;
             }
 
             makeDecision(particles) {
-                // Simple decision logic based on nearby particles
                 const nearbyParticles = particles.filter(p => {
                     const dx = p.x - this.x;
                     const dy = p.y - this.y;
                     const distance = Math.sqrt(dx * dx + dy * dy);
-                    return distance < 50; // Arbitrary distance for "nearby"
+                    return distance < 50;
                 });
 
                 if (nearbyParticles.length < 3) {
-                    this.decay(); // Decay if not enough nearby particles
+                    this.decay();
                 } else {
-                    this.grow(); // Grow if there are enough nearby particles
+                    this.grow();
                 }
             }
 
@@ -125,11 +154,7 @@
             const dx = p2.x - p1.x;
             const dy = p2.y - p1.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
-
-            if (distance < p1.radius + p2.radius) {
-                return true;
-            }
-            return false;
+            return distance < p1.radius + p2.radius;
         }
 
         function resolveCollision(p1, p2) {
@@ -137,28 +162,44 @@
             const dy = p2.y - p1.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
-            // Normalized direction vector
             const nx = dx / distance;
             const ny = dy / distance;
 
-            // Relative velocity
             const dvx = p2.vx - p1.vx;
             const dvy = p2.vy - p1.vy;
 
-            // Relative velocity in normal direction
             const relVel = dvx * nx + dvy * ny;
-
-            // Do not resolve if velocities are separating
             if (relVel > 0) return;
 
-            // Collision impulse
             const impulse = (2 * relVel) / (p1.radius + p2.radius);
 
-            // Update velocities
             p1.vx -= impulse * nx;
             p1.vy -= impulse * ny;
             p2.vx += impulse * nx;
             p2.vy += impulse * ny;
+        }
+
+        function applyForces(particles) {
+            particles.forEach(p1 => {
+                particles.forEach(p2 => {
+                    if (p1 !== p2) {
+                        const dx = p2.x - p1.x;
+                        const dy = p2.y - p1.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+
+                        if (distance < 100) {
+                            const force = (p1.charge * p2.charge) / (distance * distance);
+                            const fx = (force * dx) / distance;
+                            const fy = (force * dy) / distance;
+
+                            p1.vx += fx;
+                            p1.vy += fy;
+                            p2.vx -= fx;
+                            p2.vy -= fy;
+                        }
+                    }
+                });
+            });
         }
 
         function initSimulation() {
@@ -188,6 +229,7 @@
         }
 
         function updateSimulation(particles, matrices) {
+            applyForces(particles);
             particles.forEach(p => p.updatePosition());
 
             for (let i = 0; i < particles.length; i++) {
@@ -220,13 +262,71 @@
             requestAnimationFrame(mainLoop);
         }
 
+        function getParticleAtPosition(x, y, particles) {
+            return particles.find(p => {
+                const dx = p.x - x;
+                const dy = p.y - y;
+                return Math.sqrt(dx * dx + dy * dy) < p.radius;
+            });
+        }
+
+        function spawnProtons() {
+            const numProtons = parseInt(document.getElementById('numProtons').value);
+            for (let i = 0; i < numProtons; i++) {
+                particles.push(new Particle(id++, 'proton', 1, Math.random() * canvas.width, Math.random() * canvas.height));
+            }
+        }
+
+        function spawnNeutrons() {
+            const numNeutrons = parseInt(document.getElementById('numNeutrons').value);
+            for (let i = 0; i < numNeutrons; i++) {
+                particles.push(new Particle(id++, 'neutron', 0, Math.random() * canvas.width, Math.random() * canvas.height));
+            }
+        }
+
+        function spawnElement() {
+            const elementName = document.getElementById('elementName').value;
+            const element = ELEMENTS[elementName];
+            if (element) {
+                const { protons, neutrons } = element;
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                const configuration = [];
+                for (let i = 0; i < protons; i++) {
+                    const proton = new Particle(id++, 'proton', 1, x + Math.random() * 20 - 10, y + Math.random() * 20 - 10);
+                    particles.push(proton);
+                    configuration.push({ id: proton.id, type: proton.type, x: proton.x, y: proton.y });
+                }
+                for (let i = 0; i < neutrons; i++) {
+                    const neutron = new Particle(id++, 'neutron', 0, x + Math.random() * 20 - 10, y + Math.random() * 20 - 10);
+                    particles.push(neutron);
+                    configuration.push({ id: neutron.id, type: neutron.type, x: neutron.x, y: neutron.y });
+                }
+                matrices.push(new Matrix(configuration, elementName, x, y));
+            } else {
+                alert('Element not found!');
+            }
+        }
+
         const canvas = document.getElementById('simulationCanvas');
         const ctx = canvas.getContext('2d');
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
+        let id = 0;
         const particles = initSimulation();
         const matrices = [];
+
+        canvas.addEventListener('click', (event) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            const particle = getParticleAtPosition(x, y, particles);
+            if (particle) {
+                document.getElementById('settingsMenu').style.display = 'block';
+                document.getElementById('particleInfo').innerText = `ID: ${particle.id}\nType: ${particle.type}\nCharge: ${particle.charge}`;
+            }
+        });
 
         mainLoop();
     </script>
