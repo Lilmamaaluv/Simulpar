@@ -23,9 +23,17 @@
             background: #fff;
             padding: 10px;
             border-radius: 5px;
+            width: 300px;
         }
         #particleInfo {
             margin-bottom: 10px;
+        }
+        #particleList {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .particle-item {
+            cursor: pointer;
         }
     </style>
 </head>
@@ -51,6 +59,8 @@
             <input type="text" id="elementName" placeholder="e.g., Helium">
             <button onclick="spawnElement()">Spawn</button>
         </div>
+        <h3>All Particles</h3>
+        <div id="particleList"></div>
     </div>
     <script>
         const ELEMENTS = {
@@ -58,14 +68,6 @@
             "Helium": { protons: 2, neutrons: 2 },
             "Lithium": { protons: 3, neutrons: 4 },
             // Add more elements as needed
-            "Beryllium": { protons: 4, neutrons: 5 },
-            "Boron": { protons: 5, neutrons: 6 },
-            "Carbon": { protons: 6, neutrons: 6 },
-            "Nitrogen": { protons: 7, neutrons: 7 },
-            "Oxygen": { protons: 8, neutrons: 8 },
-            "Fluorine": { protons: 9, neutrons: 10 },
-            "Neon": { protons: 10, neutrons: 10 },
-            // Continue for the rest of the periodic table...
         };
 
         class Particle {
@@ -107,6 +109,8 @@
                 this.charge = 100;
                 this.x = x;
                 this.y = y;
+                this.vx = Math.random() * 2 - 1;
+                this.vy = Math.random() * 2 - 1;
                 this.radius = 10;
             }
 
@@ -139,6 +143,18 @@
                     this.decay();
                 } else {
                     this.grow();
+                }
+            }
+
+            updatePosition() {
+                this.x += this.vx;
+                this.y += this.vy;
+
+                if (this.x < this.radius || this.x > canvas.width - this.radius) {
+                    this.vx *= -1;
+                }
+                if (this.y < this.radius || this.y > canvas.height - this.radius) {
+                    this.vy *= -1;
                 }
             }
 
@@ -231,22 +247,24 @@
         function updateSimulation(particles, matrices) {
             applyForces(particles);
             particles.forEach(p => p.updatePosition());
-
-            for (let i = 0; i < particles.length; i++) {
-                for (let j = i + 1; j < particles.length; j++) {
-                    if (detectCollision(particles[i], particles[j])) {
-                        resolveCollision(particles[i], particles[j]);
+            particles.forEach(p1 => {
+                particles.forEach(p2 => {
+                    if (p1 !== p2 && detectCollision(p1, p2)) {
+                        resolveCollision(p1, p2);
                     }
-                }
-            }
-
-            matrices.forEach(matrix => {
-                matrix.makeDecision(particles);
+                });
             });
 
-            const newMatrix = checkStableConfiguration(particles);
-            if (newMatrix) {
-                matrices.push(newMatrix);
+            matrices.forEach(m => {
+                m.makeDecision(particles);
+                m.updatePosition();
+            });
+
+            if (particles.length >= 10) {
+                const newMatrix = checkStableConfiguration(particles);
+                if (newMatrix) {
+                    matrices.push(newMatrix);
+                }
             }
         }
 
@@ -254,6 +272,16 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             particles.forEach(p => p.render(ctx));
             matrices.forEach(m => m.render(ctx));
+
+            const particleList = document.getElementById('particleList');
+            particleList.innerHTML = '';
+            particles.forEach(p => {
+                const item = document.createElement('div');
+                item.className = 'particle-item';
+                item.innerText = `ID: ${p.id}, Type: ${p.type}`;
+                item.onclick = () => showParticleInfo(p);
+                particleList.appendChild(item);
+            });
         }
 
         function mainLoop() {
@@ -308,6 +336,10 @@
             }
         }
 
+        function showParticleInfo(particle) {
+            document.getElementById('particleInfo').innerText = `ID: ${particle.id}\nType: ${particle.type}\nCharge: ${particle.charge}`;
+        }
+
         const canvas = document.getElementById('simulationCanvas');
         const ctx = canvas.getContext('2d');
         canvas.width = window.innerWidth;
@@ -324,7 +356,7 @@
             const particle = getParticleAtPosition(x, y, particles);
             if (particle) {
                 document.getElementById('settingsMenu').style.display = 'block';
-                document.getElementById('particleInfo').innerText = `ID: ${particle.id}\nType: ${particle.type}\nCharge: ${particle.charge}`;
+                showParticleInfo(particle);
             }
         });
 
