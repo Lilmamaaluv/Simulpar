@@ -21,8 +21,24 @@
 <body>
     <canvas id="simulationCanvas"></canvas>
     <script>
+        const ELEMENTS = {
+            "Hydrogen": { protons: 1, neutrons: 0 },
+            "Helium": { protons: 2, neutrons: 2 },
+            "Lithium": { protons: 3, neutrons: 4 },
+            // Add more elements as needed
+            "Beryllium": { protons: 4, neutrons: 5 },
+            "Boron": { protons: 5, neutrons: 6 },
+            "Carbon": { protons: 6, neutrons: 6 },
+            "Nitrogen": { protons: 7, neutrons: 7 },
+            "Oxygen": { protons: 8, neutrons: 8 },
+            "Fluorine": { protons: 9, neutrons: 10 },
+            "Neon": { protons: 10, neutrons: 10 },
+            // Continue for the rest of the periodic table...
+        };
+
         class Particle {
-            constructor(type, charge, x, y) {
+            constructor(id, type, charge, x, y) {
+                this.id = id;
                 this.type = type;
                 this.charge = charge;
                 this.x = x;
@@ -54,8 +70,9 @@
         }
 
         class Matrix {
-            constructor(configuration, x, y) {
+            constructor(configuration, element, x, y) {
                 this.configuration = configuration;
+                this.element = element;
                 this.charge = 100;
                 this.x = x;
                 this.y = y;
@@ -75,6 +92,25 @@
 
             break() {
                 // Logic for matrix breaking
+                this.charge = 0;
+                this.configuration = null;
+                this.element = null;
+            }
+
+            makeDecision(particles) {
+                // Simple decision logic based on nearby particles
+                const nearbyParticles = particles.filter(p => {
+                    const dx = p.x - this.x;
+                    const dy = p.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    return distance < 50; // Arbitrary distance for "nearby"
+                });
+
+                if (nearbyParticles.length < 3) {
+                    this.decay(); // Decay if not enough nearby particles
+                } else {
+                    this.grow(); // Grow if there are enough nearby particles
+                }
             }
 
             render(ctx) {
@@ -85,29 +121,86 @@
             }
         }
 
+        function detectCollision(p1, p2) {
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < p1.radius + p2.radius) {
+                return true;
+            }
+            return false;
+        }
+
+        function resolveCollision(p1, p2) {
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            // Normalized direction vector
+            const nx = dx / distance;
+            const ny = dy / distance;
+
+            // Relative velocity
+            const dvx = p2.vx - p1.vx;
+            const dvy = p2.vy - p1.vy;
+
+            // Relative velocity in normal direction
+            const relVel = dvx * nx + dvy * ny;
+
+            // Do not resolve if velocities are separating
+            if (relVel > 0) return;
+
+            // Collision impulse
+            const impulse = (2 * relVel) / (p1.radius + p2.radius);
+
+            // Update velocities
+            p1.vx -= impulse * nx;
+            p1.vy -= impulse * ny;
+            p2.vx += impulse * nx;
+            p2.vy += impulse * ny;
+        }
+
         function initSimulation() {
             const particles = [];
+            let id = 0;
             for (let i = 0; i < 10; i++) {
-                particles.push(new Particle('proton', 1, Math.random() * canvas.width, Math.random() * canvas.height));
-                particles.push(new Particle('neutron', 0, Math.random() * canvas.width, Math.random() * canvas.height));
+                particles.push(new Particle(id++, 'proton', 1, Math.random() * canvas.width, Math.random() * canvas.height));
+                particles.push(new Particle(id++, 'neutron', 0, Math.random() * canvas.width, Math.random() * canvas.height));
             }
             return particles;
         }
 
         function checkStableConfiguration(particles) {
-            // Placeholder for checking stable configurations
-            // If found, create a matrix
-            if (particles.length >= 10) {
-                const x = particles.reduce((sum, p) => sum + p.x, 0) / particles.length;
-                const y = particles.reduce((sum, p) => sum + p.y, 0) / particles.length;
-                const configuration = particles.map(p => ({ type: p.type, x: p.x, y: p.y }));
-                return new Matrix(configuration, x, y);
+            for (const element in ELEMENTS) {
+                const { protons, neutrons } = ELEMENTS[element];
+                const foundProtons = particles.filter(p => p.type === 'proton').length;
+                const foundNeutrons = particles.filter(p => p.type === 'neutron').length;
+
+                if (foundProtons >= protons && foundNeutrons >= neutrons) {
+                    const x = particles.reduce((sum, p) => sum + p.x, 0) / particles.length;
+                    const y = particles.reduce((sum, p) => sum + p.y, 0) / particles.length;
+                    const configuration = particles.map(p => ({ id: p.id, type: p.type, x: p.x, y: p.y }));
+                    return new Matrix(configuration, element, x, y);
+                }
             }
             return null;
         }
 
         function updateSimulation(particles, matrices) {
             particles.forEach(p => p.updatePosition());
+
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    if (detectCollision(particles[i], particles[j])) {
+                        resolveCollision(particles[i], particles[j]);
+                    }
+                }
+            }
+
+            matrices.forEach(matrix => {
+                matrix.makeDecision(particles);
+            });
 
             const newMatrix = checkStableConfiguration(particles);
             if (newMatrix) {
